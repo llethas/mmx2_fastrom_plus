@@ -10,7 +10,7 @@ FastROM Plus brings many QoL improvements all around for the vanilla game. Compl
   - Dialogue boxes open, close, and scroll faster
   - Pressing START skips the boss intro
 
-Apply "fastrom_plus.ips" to your USA ROM.
+Apply "fastrom_plus.ips" to your USA ROM. If you're using bsnes/ares you also need the manifest "fastrom_plus.bml" in the same folder and with the same name as your base ROM.
 
 https://github.com/llethas/mmx2_fastrom_plus - FastROM Plus Github
 Original FastROM patch made by kandowontu

@@ -1,0 +1,32 @@
+game
+  sha256:   1b17651a2753d6600166fb950b285a94a46c560a20fbe67d2b07f735e3f16278
+  label:    Mega Man X2 (FastROM Plus)
+  name:     Mega Man X2 (FastROM Plus)
+  region:   SNS-ARXE-USA
+  revision: SNS-ARXE-0
+  board:    SHVC-2DC0N-01
+    memory
+      type: ROM
+      size: 0x180000
+      content: Program
+    memory
+      type: RAM
+      size: 0x800
+      content: Save
+    memory
+      type: ROM
+      size: 0xc00
+      content: Data
+      manufacturer: Hitachi
+      architecture: HG51BS169
+      identifier: Cx4
+    memory
+      type: RAM
+      size: 0xc00
+      content: Data
+      manufacturer: Hitachi
+      architecture: HG51BS169
+      identifier: Cx4
+      volatile
+    oscillator
+      frequency: 20000000

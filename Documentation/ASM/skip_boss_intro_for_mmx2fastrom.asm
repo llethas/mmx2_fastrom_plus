@@ -81,10 +81,12 @@ lorom
 ; Patch behavior
 ; ----------------------------------------------------------------------------
 ;
-; 1. Replace the original state dispatch at $80:B9DB with a JSR to our
-;    START-check routine at $80:FE77.
+; 1. Replace the original state dispatch at $80:B9DB with a JSL to our
+;    START-check routine at $88:FFC0 (see "MSU-1 compatibility" below).
 ;
-; 2. If START was not newly pressed, execute the original state dispatch.
+; 2. If START was not newly pressed, execute the original state dispatch
+;    (through the 4-byte bank-$80 trampoline T_B9EF: the original
+;    JSR ($B9EF,X) only works from bank $80).
 ;
 ; 3. If START was newly pressed:
 ;      - if $1FAD does not yet hold the placeholder $0D (i.e. state 0 has
@@ -102,13 +104,28 @@ lorom
 ; Code locations
 ; ----------------------------------------------------------------------------
 ;
-;   $80:B9DB  Original boss-intro state dispatch.
-;   $80:FE77  Free space used by the START-check routine.
+;   $80:B9DB  Original boss-intro state dispatch (hook).
+;   $80:FF75  T_B9EF: JSR ($B9EF,X) / RTL     (4 bytes, bank-$80 trampoline)
+;   $88:FFC0  START-check routine             (33 bytes, free tail of bank $08)
 ;
-; The code cave at $80:FE77-$80:FE96 (32 bytes) is unused by the game and by
-; the other patches in this set; $80:FE97 onward is claimed by later patches
-; (extra_options_for_mmx2fastrom, sram_save_for_mmx2fastrom,
-; option_mode_exit_to_menu_for_mmx2fastrom) and must not be touched here.
+; MSU-1 COMPATIBILITY
+;   The routine used to live at $80:FE77-FE96.  The MSU-1 hack for this
+;   game owns $00:FE78-$00:FF35 (its track player + NMI handler) and
+;   FastROM v4.0 itself owns $00:FF8D-FFA9 (reset-time MEMSEL code), which
+;   leaves only $80:FF36-$80:FF8C (87 bytes) of bank $80 for ALL of the
+;   Plus patches.  The windows are:
+;
+;       $80:FF36-FF3F   extra_options   sub-tank consolidate gate
+;       $80:FF40-FF63   extra_options   trampolines (T_xxxx)
+;       $80:FF64-FF74   password_exit   stubs
+;       $80:FF75-FF78   skip_boss_intro T_B9EF (this patch)
+;       $80:FF79-FF80   sram_save       F013 wrapper
+;       $80:FF81-FF84   sram_save       T_816B
+;       $80:FF85-FF8C   spare
+;
+;   so this patch keeps only the 4-byte trampoline in bank $80 and puts the
+;   routine itself in bank $88 ($88:FFC0-FFEF, behind option_mode_exit's
+;   $88:FFA0-FFBF window).
 ;
 ; ----------------------------------------------------------------------------
 ; Original bytes / replacement
@@ -118,11 +135,15 @@ lorom
 ;       AE D3 00 FC EF B9
 ;
 ;   $80:B9DB patched:
-;       20 77 FE EA EA EA
+;       22 C0 FF 88 EA EA
 ;
-;   $80:FE77:
+;   $80:FF75 (T_B9EF):
+;       FC EF B9 6B
+;
+;   $88:FFC0 (BossIntroStartSkip):
 ;       AD AD 00 29 10 F0 12 AD AD 1F C9 0D F0 02 85 33
-;       A9 10 8D D3 00 A9 01 85 34 AE D3 00 FC EF B9 60
+;       A9 10 8D D3 00 A9 01 85 34 AE D3 00 22 75 FF 80
+;       6B
 ;
 ; These are the exact bytes emitted by the companion IPS patch.
 ;
@@ -132,18 +153,30 @@ lorom
 ; Boss-intro dispatch hook
 ; ----------------------------------------------------------------------------
 
+assert read1($80FF75) == $FF && read1($80FF78) == $FF
+assert read1($88FFC0) == $FF && read1($88FFEF) == $FF   ; $88:FFF0-FFF6 belongs to FastROM v4.0
+
 org $80B9DB
 
-        JSR BossIntroStartSkip
-        NOP
+        JSL BossIntroStartSkip   ; 4 bytes (was JSR ($B9EF,X) preceded by LDX)
         NOP
         NOP
 
 ; ----------------------------------------------------------------------------
-; START skip routine
+; Bank-$80 trampoline: the state table dispatch must run in bank $80.
 ; ----------------------------------------------------------------------------
 
-org $80FE77
+org $80FF75
+T_B9EF:
+        JSR ($B9EF,X)            ; Original state dispatch (bank $80 only).
+        RTL
+assert pc() <= $80FF79           ; stay clear of sram_save's wrapper
+
+; ----------------------------------------------------------------------------
+; START skip routine (bank $88 = FastROM mirror of bank $08)
+; ----------------------------------------------------------------------------
+
+org $88FFC0
 
 BossIntroStartSkip:
         LDA.W $00AD              ; Newly-pressed controller high byte.
@@ -170,8 +203,9 @@ BossIntroStartSkip:
 
 .dispatch:
         LDX.W $00D3              ; Original state lookup.
-        JSR ($B9EF,X)            ; Original state dispatch.
-        RTS
+        JSL T_B9EF               ; Original state dispatch.
+        RTL
+assert pc() <= $88FFF0           ; $88:FFF0-FFF6 belongs to FastROM v4.0
 
 ; ----------------------------------------------------------------------------
 ; SNES header checksum fix

@@ -44,20 +44,28 @@
 ;    The vanilla cleanup is replaced by a jump to OptionModeExit in free
 ;    space. That routine preserves the cleanup of $39-$3C but writes $02 to
 ;    $38 instead of $00, so control returns to the main-menu state machine.
+;
+;  MSU-1 COMPATIBILITY
+;    OptionModeExit used to sit in bank $80 ($80:FF40).  Bank-$80 free space
+;    is scarce and MSU-1 owns $00:FE78-$00:FF35, so it now lives in bank
+;    $88 at $88:FFA0 (free tail of bank $08, behind extra_options' code and
+;    MSU-1's $08:FDB0 block) and the vanilla cleanup jumps there with a JML.
+;    It leaves through JML $809247, the RTS that ended the old cleanup, so
+;    the return address is still the one for the bank-$80 caller.
 ; ============================================================================
 
 lorom
 
-assert read1($80FF40) == $FF     ; free space we use ($80:FF32-FF8C is unused)
-assert read1($80FF4F) == $FF
+assert read1($88FFA0) == $FF     ; free space we use ($88:FFA0-FFBF; FFC0+ is skip_boss_intro)
+assert read1($88FFBF) == $FF
 
 org $80923D
-        JMP OptionModeExit       ; 3 bytes; the rest of the old cleanup is dead
-        NOP : NOP : NOP : NOP : NOP : NOP : NOP ; $80:9240-9246 (old bytes)
+        JML OptionModeExit       ; 4 bytes; the rest of the old cleanup is dead
+        NOP : NOP : NOP : NOP : NOP : NOP ; $80:9241-9246 (old bytes)
 ; $80:9247 (the RTS that ended the old cleanup) is deliberately kept:
-; extra_options_for_mmx2fastrom jumps to it (JML $809247).
+; extra_options and password_exit jump to it (JML $809247).
 
-org $80FF40
+org $88FFA0
 OptionModeExit:
         SEP #$30                 ; the main menu code is 8-bit throughout
         LDA #$02
@@ -66,8 +74,11 @@ OptionModeExit:
         STZ $3A
         STZ $3B
         STZ $3C                  ; cursor on GAME START
-        RTS                      ; returns to the caller of the menu handler
-assert pc() <= $80FF8D           ; free space ends at $80:FF8C
+OptionModeExitJML:
+        JML $809247              ; the RTS at $80:9247 returns to the caller of
+                                 ; the menu handler (sram_save extends this)
+assert pc() <= $88FFB8           ; $88:FFB8-FFBF stays free for sram_save's extension
+print "OptionModeExit JML at $", hex(OptionModeExitJML)
 
 ; ----------------------------------------------------------------------------
 ; SNES header checksum fix

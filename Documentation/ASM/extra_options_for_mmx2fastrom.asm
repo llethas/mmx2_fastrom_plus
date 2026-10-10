@@ -51,6 +51,34 @@
 ;
 ;    The original main-menu messages $10-$12 are left in the ROM untouched;
 ;    they are simply no longer selected by the four-row menu.
+;
+;  MSU-1 COMPATIBILITY (memory map)
+;    The MSU-1 hack for this game claims $00:FE78-$00:FF35 (bank $80/$00
+;    mirror: track player + NMI handler) and $08:FDB0-$08:FE14 (bank
+;    $88/$08 mirror: the APU-port hook).  FastROM Plus therefore must not
+;    use those bytes.  This patch's layout is:
+;
+;      bank $80  $FF36-$FF3F   SubTankConsolidate gate         (10 bytes)
+;                $FF40-$FF63   trampolines T_xxxx              (36 bytes)
+;      bank $88  $FDA6-$FDAF   DTapGate (must stay in bank $08: it JSRs
+;                              $BAE7 and is called from $88:9608)
+;                $FE15-...     SubTankFrame, ExtraDispatch, the EXTRA
+;                              OPTIONS screen (ends before $88:FFA0)
+;
+;    $88:FFA0-$88:FFBF is reserved for option_mode_exit_to_menu and
+;    sram_save, $88:FFC0-$88:FFEF for skip_boss_intro ($88:FFF0-FFF6 is
+;    FastROM v4.0's) and $88:FDB0-$88:FE14 is left alone for MSU-1.
+;
+;  RELOCALIZATION COMPATIBILITY (bank $86 data)
+;    The MMX2 Relocalization Addendum (Irregular / Rockman versions) stores
+;    its stage-name message (id $3C, 43 bytes) at $86:FD3A, the very start of
+;    the free space this patch used to fill, so the two patches overwrote each
+;    other (black main menu).  This patch now leaves $86:FD3A-FD64 alone and
+;    starts its data at $86:FD65.  To still fit before the end of the bank,
+;    the first two main-menu messages are stored in the space of the
+;    vanilla 3-row main menu messages ($10-$12, $86:8EA7-8F2A, 132 bytes):
+;    they are dead once the two sites that drew them (the $80:9114 and
+;    $80:917D immediates below) point at !MSG_MAIN0 instead.
 ; ============================================================================
 
 lorom
@@ -128,14 +156,22 @@ org $868C6F+(!MSG_BOX_LIT*2)
 ;    on top of the vanilla bytes and on top of subtank_stop_on_full alike.
 ; ============================================================================
 ; per-frame handler: replace the 14-byte prologue with a hook.
+; SubTankFrame lives in bank $88 (free space in bank $80 is scarce, see the
+; MSU-1 note above), so it is entered with a JSL and answers through the
+; carry flag:
+;      C = 1  -> run the vanilla body at $80:C2D9 (heal one step)
+;      C = 0  -> nothing to do this frame (vanilla's "BNE $C300" -> RTS), or
+;                the transfer was just aborted because health is full
 ; (NB: the branch target must be a label.  asar silently assembles a branch to
 ;  a bare address such as "bra $C300" as offset 0, which would fall through
 ;  into the vanilla body a second time.)
-OrigHandlerExit = $80C300
+OrigHandlerBody = $80C2D9
 org $80C2CB
-        JSR SubTankFrame
-        BRA OrigHandlerExit      ; original handler exit (RTS)
-        NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP
+        JSL SubTankFrame         ; 4 bytes
+        BCS OrigHandlerBody      ; 2 bytes  C=1: vanilla body (its RTS returns
+                                 ;           to the caller of this handler)
+        RTS                      ; 1 byte   C=0: done for this frame
+        NOP : NOP : NOP : NOP : NOP : NOP : NOP   ; $C2D2-$C2D8 (dead)
 
 ; end of transfer: JSR $C5DA (consolidate)  ->  JSR gate
 org $80C2F9
@@ -146,35 +182,8 @@ org $80C2F9
 org $80C5DA
         db $9C
 
-; new routines, in the free space the old patch used ($80:FF00-FF21 and on)
-org $80FF00
-SubTankFrame:
-        DEC $2A                  ; frame timer
-        BNE .exit                ; not yet time for a tick
-
-        LDA #$02
-        STA $2A                  ; reload timer (same as vanilla)
-
-        LDA.L !SUB_FLAG
-        BEQ .vanilla             ; option OFF: vanilla path, nothing else
-
-        LDA.W $09FF              ; option ON: current health ...
-        CMP.W $1FD1              ; ... vs max health
-        BEQ .stop                ; already full -> abort the transfer
-
-.vanilla:                        ; play the refill SFX, then the vanilla body
-        LDA #$15
-        JSL $808549
-        JMP $C2D9                ; (its RTS returns to the BRA at $C2CF's hook)
-
-.stop:                           ; health is full: clear the whole transfer state so
-        STZ $2A                  ; the menu unlocks at once, no SFX, and the
-        STZ $2B                  ; remaining energy stays in the tank
-        STZ $34
-        STZ $03
-.exit:
-        RTS
-
+; consolidate gate (bank $80, because the hook above is a JSR from bank $80)
+org $80FF36
 SubTankConsolidate:
         LDA.L !SUB_FLAG
         BEQ .vanilla
@@ -182,14 +191,14 @@ SubTankConsolidate:
 .vanilla:
         JMP $C5DA                ; option OFF: vanilla consolidate (its RTS returns
 ; to the caller of this gate)
-assert pc() <= $80FF8D           ; free space ends at $80:FF8C
+assert pc() <= $80FF40           ; stay clear of the trampolines below
 
 ; ============================================================================
 ; 5. Bank $80 trampolines: bank-$80 engine routines return with RTS, so they
 ;    can only be JSR'd from bank $80.  JSL to these stubs, which JSR + RTL.
-;    (placed in the free gap after skip_boss_intro's $FE80-FE96)
+;    (36 bytes at $80:FF40-FF63, right after the consolidate gate)
 ; ============================================================================
-org $80FE97
+org $80FF40
         T_815F: JSR $815F : RTL  ; yield one frame
         T_8669: JSR $8669 : RTL  ; draw message A
         T_86CD: JSR $86CD : RTL  ; clear sprites/queue
@@ -199,16 +208,11 @@ org $80FE97
         T_85F7: JSR $85F7 : RTL  ; fade in
         T_8619: JSR $8619 : RTL  ; fade out
         T_8507: JSR $8507 : RTL  ; queue sound A
-assert pc() <= $80FF00           ; stay clear of subtank/skip_boss regions
+assert pc() <= $80FF64           ; stay clear of password_exit's stubs
 
 ; ============================================================================
-; 6. Bank $86 data (free space at the end of the bank)
+; 6. Bank $86 data
 ; ============================================================================
-org $86FD3A
-
-MainMenuSpriteY:
-        db $96, $A6, $B6, $C6
-
 ; ---- main menu (4 rows).  VRAM word address = $0800 + row*32 + col ----------
 macro mainmenu(a1, a2, a3, a4)
         db 11, <a1> : dw $0A4A : db "GAME  START" ; row 18, col 10
@@ -218,8 +222,22 @@ macro mainmenu(a1, a2, a3, a4)
         db 0
 endmacro
 
+; Messages 0 and 1 replace the vanilla 3-row menu messages $10-$12, which
+; nothing else uses any more (see the note at the top of this file).
+assert read1($868EA7) == $0B && read1($868F2B) == $0E   ; vanilla msg $10 .. start of msg $13
+org $868EA7
         MsgMain0: %mainmenu($24, $20, $20, $20)
         MsgMain1: %mainmenu($20, $24, $20, $20)
+assert pc() <= $868F2B           ; must not run into vanilla message $13
+
+; Everything else goes at the end of the bank, AFTER the 43 bytes
+; ($86:FD3A-FD64) the Relocalization Addendum keeps its message $3C in.
+assert read1($86FD65) == $FF && read1($86FFFF) == $FF
+org $86FD65
+
+MainMenuSpriteY:
+        db $96, $A6, $B6, $C6
+
         MsgMain2: %mainmenu($20, $20, $24, $20)
         MsgMain3: %mainmenu($20, $20, $20, $24)
 
@@ -274,12 +292,49 @@ org $88FDA6
 ; ---- gameplay gate (same gate as the reference dtap_dash patch) ------------
 ; $88:9608 originally JSR $BAE7, the per-frame double-tap dash state machine
 ; (ground and air both go through it).  When the flag is OFF it is skipped.
+; Must stay in bank $08 (JSR $BAE7 / JSR from $88:9608); it fits exactly in
+; the 10 bytes in front of MSU-1's $08:FDB0 routine.
 DTapGate:
         LDA.L !DTAP_FLAG
         BEQ .skip
         JSR $BAE7
 .skip:
         RTS
+assert pc() <= $88FDB0           ; MSU-1 owns $88:FDB0-$88:FE14
+
+; ---- everything else goes behind MSU-1's block ------------------------------
+org $88FE15
+
+; ---- sub-tank transfer, per-frame tick (entered by JSL from $80:C2CB) -------
+; 8-bit A.  Returns C = 1 to run the vanilla body at $80:C2D9, C = 0 to stop.
+SubTankFrame:
+        DEC $2A                  ; frame timer
+        BNE .exit                ; not yet time for a tick
+
+        LDA #$02
+        STA $2A                  ; reload timer (same as vanilla)
+
+        LDA.L !SUB_FLAG
+        BEQ .vanilla             ; option OFF: vanilla path, nothing else
+
+        LDA.W $09FF              ; option ON: current health ...
+        CMP.W $1FD1              ; ... vs max health
+        BEQ .stop                ; already full -> abort the transfer
+
+.vanilla:                        ; play the refill SFX, then the vanilla body
+        LDA #$15
+        JSL $808549
+        SEC                      ; C=1: caller continues at the vanilla body
+        RTL
+
+.stop:                           ; health is full: clear the whole transfer state so
+        STZ $2A                  ; the menu unlocks at once, no SFX, and the
+        STZ $2B                  ; remaining energy stays in the tank
+        STZ $34
+        STZ $03
+.exit:
+        CLC                      ; C=0: nothing more to do this frame
+        RTL
 
 ; ---- main menu selection dispatcher ----------------------------------------
 ; Entered by JML from $80:91FD with 8-bit A/X/Y, DB=$86, DP=0.
@@ -470,11 +525,13 @@ ExtraOptions:
         LDA #$F1                 ; confirm SFX (same one the intro plays on START)
         JSL T_8507
         JSL T_8619               ; fade out
+ExtraOptionsTail:                ; sram_save extends this tail (see that patch)
         REP #$20
         PLD
         PLP
         RTS
-assert pc() <= $890000           ; end of bank $88
+print "ExtraOptions tail at $", hex(ExtraOptionsTail), ", code ends at $", hex(pc())
+assert pc() <= $88FFA0           ; $88:FFA0+ belongs to option_mode_exit/sram_save
 
 ; ============================================================================
 ; 8. Gameplay hook: double-tap dash detector -> gate

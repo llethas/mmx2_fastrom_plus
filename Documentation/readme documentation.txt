@@ -8,9 +8,10 @@ Patch order:
   4. dash_L_for_mmx2fastrom.ips
   5. extra_options_for_mmx2fastrom.ips
   6. option_mode_exit_to_menu_for_mmx2fastrom.ips
-  7. sram_save_for_mmx2fastrom.ips
+  7. password_exit_to_menu_for_mmx2fastrom.ips
+  8. sram_save_for_mmx2fastrom.ips
 
-"fastrom_plus.ips" contains all of the patches merged into one. You can pick and choose which patches to apply, however, Megaman X2 (U) - Fastrom v4.0 is required for all of them, and if you're applying the sram_save_for_mmx2fastrom patch, it requires extra_options_for_mmx2fastrom and option_mode_exit_to_menu_for_mmx2fastrom to be applied beforehand.
+"fastrom_plus.ips" contains all of the patches merged into one. Some of the patches require a previous patch to work, but not all of them.
 
 
 Individual changes breakdown:
@@ -31,6 +32,9 @@ Individual changes breakdown:
 
   option_mode_exit_to_menu_for_mmx2fastrom:
       - Exiting OPTION MODE now goes back directly to the main menu, instead of restarting the intro
+
+  password_exit_to_menu_for_mmx2fastrom:
+      - Implements an EXIT button in the PASS WORD screen, so you can go back to the main menu from there
 
   sram_save_for_mmx2fastrom:
       - Adds SRAM saving for in-game passwords, control scheme, and option toggles from OPTION MODE and EXTRA OPTIONS

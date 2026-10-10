@@ -76,6 +76,20 @@
 ;    bytes are present and its stored 8-bit checksum matches the sum of the
 ;    29 data bytes. Otherwise the game keeps the normal ROM defaults.
 ;
+;  MSU-1 COMPATIBILITY (memory map)
+;    The MSU-1 hack claims $00:FE78-$00:FF35 and $08:FDB0-$08:FE14.  To stay
+;    clear of them this patch keeps almost nothing in bank $80:
+;
+;      bank $80  $FF79-$FF80   F013SaveWrapper                 (8 bytes)
+;                $FF81-$FF84   T_816B trampoline (JSR $816B / RTL)
+;      bank $AF  $FEA0-...     CopyDefaultsAndSRAM, SaveSRAM and
+;                              LoadOrInitSRAM (free tail of bank $2F,
+;                              behind faster_dialog_box's $AF:FE00-FE89)
+;      bank $88  $FF7F         tail of extra_options' EXTRA OPTIONS screen
+;                              (extended by 4 bytes in place)
+;                $FFAE         JML at the end of option_mode_exit's
+;                              OptionModeExit (extended by 4 bytes in place)
+;
 ;  VERIFICATION NOTES
 ;    The SRAM layout and defaults-copy range were checked against the game's
 ;    actual code, and the password digits were traced at $7E:FFCB-FFDA as the
@@ -130,13 +144,14 @@ org $8082A7
 
 ; ----------------------------------------------------------------------------
 ; Hook: OPTION MODE exit (option_mode_exit_to_menu's OptionModeExit routine,
-; $80:FF40-FF4E). Original last byte at $80FF4E is a lone RTS; $80FF4F-FF8C
-; is free space. Extend it to save SRAM just before returning.
+; $88:FFA0-FFB1). It ends in JML $809247 at $88:FFAE; $88:FFB2-FFFF is free
+; space.  Extend it to save SRAM just before returning.
 ; ----------------------------------------------------------------------------
-assert read1($80FF4E) == $60, "OptionModeExit no longer ends in a lone RTS"
-org $80FF4E
+assert read1($88FFAE) == $5C, "OptionModeExit no longer ends in JML $809247"
+assert read1($88FFB2) == $FF && read1($88FFB6) == $FF
+org $88FFAE
         JSL SaveSRAM
-        RTS
+        JML $809247
 
 ; ----------------------------------------------------------------------------
 ; Hook: password auto-generation. $80:F013 has exactly one call site, at
@@ -148,14 +163,25 @@ assert read1($80EF91) == $20, "unexpected byte at the JSR $F013 call site"
 org $80EF91
         JSR F013SaveWrapper
 
-org $80FF32
+assert read1($80FF79) == $FF && read1($80FF84) == $FF
+org $80FF79
 F013SaveWrapper:
         JSR $F013
         JSL SaveSRAM
         RTS
-assert pc() <= $80FF40           ; stay clear of OptionModeExit at $80FF40
 
-org $80FEBB
+; bank-$80 trampoline: $816B is a bank-$80 engine routine (RTS), so code in
+; another bank has to reach it through a JSR + RTL stub.
+T_816B:
+        JSR $816B
+        RTL
+assert pc() <= $80FF85           ; $80:FF8D+ belongs to FastROM v4.0
+
+; ----------------------------------------------------------------------------
+; Everything else lives in bank $2F/$AF (free tail, behind the dialog patch).
+; ----------------------------------------------------------------------------
+assert read1($AFFEA0) == $FF && read1($AFFFFF) == $FF
+org $AFFEA0
 CopyDefaultsAndSRAM:
         PHP
         SEP #$30
@@ -167,19 +193,19 @@ CopyDefaultsAndSRAM:
         BPL .defloop
         JSL LoadOrInitSRAM
         LDA #$1E
-        JSR $816B
+        JSL T_816B               ; was JSR $816B (bank $80 only)
         PLP
         RTL
-assert pc() <= $80FF00           ; stay clear of the FF32 trampoline above
 
 ; ----------------------------------------------------------------------------
 ; Hook: EXTRA OPTIONS exit (extra_options's ExtraOptions.exit, bank $88).
-; Original tail at $88:FEF2-FEF6:
+; Original tail at $88:FF7F-FF83:
 ;   REP #$20 ; PLD ; PLP ; RTS
-; $88:FEF7 onward is free space. Extend the tail to save SRAM first.
+; $88:FF84 onward is free space. Extend the tail to save SRAM first.
 ; ----------------------------------------------------------------------------
-assert read1($88FEF2) == $C2, "ExtraOptions exit tail moved"
-org $88FEF2
+assert read1($88FF7F) == $C2, "ExtraOptions exit tail moved"
+assert read1($88FF85) == $FF && read1($88FF88) == $FF
+org $88FF7F
         JSL SaveSRAM
         REP #$20
         PLD
@@ -191,7 +217,7 @@ org $88FEF2
 ; with a signature and an 8-bit checksum. Callable via JSL from any bank.
 ; 8-bit A/X/Y throughout; restores caller's flags on exit.
 ; ----------------------------------------------------------------------------
-org $88FEFB
+org $AFFEC0
 SaveSRAM:
         PHP
         SEP #$30
@@ -217,7 +243,6 @@ SaveSRAM:
         STA.L !SRAM_SUM
         PLP
         RTL
-assert pc() <= $88FF30           ; must not run into LoadOrInitSRAM below
 
 ; ----------------------------------------------------------------------------
 ; LoadOrInitSRAM: if SRAM holds a valid signature+checksum, overwrite the
@@ -226,7 +251,9 @@ assert pc() <= $88FF30           ; must not run into LoadOrInitSRAM below
 ; ROM defaults currently in WRAM, so the next SaveSRAM call has a valid
 ; base and future validity checks succeed. Callable via JSL from any bank.
 ; ----------------------------------------------------------------------------
-org $88FF30
+assert pc() <= $AFFF00          ; must not run into LoadOrInitSRAM below
+
+org $AFFF00
 LoadOrInitSRAM:
         PHP
         SEP #$30
@@ -278,7 +305,7 @@ LoadOrInitSRAM:
         STA.L !SRAM_SUM
         PLP
         RTL
-assert pc() <= $890000
+assert pc() <= $B00000           ; end of bank $AF
 
 ; ----------------------------------------------------------------------------
 ; SNES header checksum fix
@@ -287,8 +314,9 @@ assert pc() <= $890000
 ; --fix-checksum=off when building this patch) automatically recomputes
 ; and writes the correct checksum/complement pair for the final ROM at
 ; $80:FFDC-FFDF after all edits above are assembled. No hardcoded bytes
-; are written here -- true checksum of the resulting ROM ($93 $B8, complement
-; $6C $47)
+; are written here -- true checksum of the resulting ROM when every patch is
+; applied in the documented order, including password_exit_to_menu
+; ($44 $48, complement $BB $B7)
 
 ; ============================================================================
 ; End of patch

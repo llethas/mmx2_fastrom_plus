@@ -84,7 +84,7 @@
 ;                $FF81-$FF84   T_816B trampoline (JSR $816B / RTL)
 ;      bank $AF  $FEA0-...     CopyDefaultsAndSRAM, SaveSRAM and
 ;                              LoadOrInitSRAM (free tail of bank $2F,
-;                              behind faster_dialog_box's $AF:FE00-FE89)
+;                              behind better_dialog_box's $AF:FE00-FE89)
 ;      bank $88  $FF7F         tail of extra_options' EXTRA OPTIONS screen
 ;                              (extended by 4 bytes in place)
 ;                $FFAE         JML at the end of option_mode_exit's

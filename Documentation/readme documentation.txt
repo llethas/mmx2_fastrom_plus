@@ -4,7 +4,7 @@ Patch order:
 
   1. Megaman X2 (U) - Fastrom v4.0.ips
   2. skip_boss_intro_for_mmx2fastrom.ips
-  3. faster_dialog_box_for_mmx2fastrom.ips
+  3. better_dialog_box_for_mmx2fastrom.ips
   4. dash_L_for_mmx2fastrom.ips
   5. extra_options_for_mmx2fastrom.ips
   6. option_mode_exit_to_menu_for_mmx2fastrom.ips
@@ -19,8 +19,9 @@ Individual changes breakdown:
   skip_boss_intro_for_mmx2fastrom:
       - Pressing START skips the boss intro
 
-  faster_dialog_box_for_mmx2fastrom:
-      - Dialogue boxes open, close, and scroll faster
+  better_dialog_box_for_mmx2fastrom:
+      - Dialog boxes open, close, and scroll faster
+      - Holding Y or B no longer auto-skips the dialog box (holding START still does), so you can speed up the text without accidentally skipping it
 
   dash_L_for_mmx2fastrom:
       - Assigns dash to L by default (and changes the armor upgrades scripted demonstration input assignments too, since changing the default DASH and SELECT_L breaks them)

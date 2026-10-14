@@ -8,7 +8,8 @@ FastROM Plus brings many QoL improvements all around for the vanilla game. Compl
   - Exiting OPTION MODE now goes back directly to the main menu, instead of restarting the intro
   - Implements an EXIT button in the PASS WORD screen, so you can go back to the main menu from there
   - Assigns dash to L by default
-  - Dialogue boxes open, close, and scroll faster
+  - Dialog boxes open, close, and scroll faster
+  - Holding Y or B no longer auto-skips the dialog box (holding START still does), so you can speed up the text without accidentally skipping it
   - Pressing START skips the boss intro
   - Compatible with the MSU-1 and Relocalization Addendum patches
 
@@ -18,5 +19,6 @@ If you're using the MSU-1 patch: Apply "fastrom_plus.ips" first, then apply ever
 
 The Relocalization Addendum patch can be applied at any point.
 
-https://github.com/llethas/mmx2_fastrom_plus - FastROM Plus Github
+https://github.com/llethas/mmx2_fastrom_plus - FastROM Plus GitHub
+https://gitlab.com/llethas/mmx2_fastrom_plus - FastROM Plus GitLab
 Original FastROM patch made by kandowontu

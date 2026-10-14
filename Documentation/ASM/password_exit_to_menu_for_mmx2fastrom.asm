@@ -3,7 +3,7 @@
 ;  Apply after (in this order):
 ;    Megaman X2 (U) - Fastrom v4.0.ips
 ;    skip_boss_intro_for_mmx2fastrom.ips
-;    faster_dialog_box_for_mmx2fastrom.ips
+;    better_dialog_box_for_mmx2fastrom.ips
 ;    dash_L_for_mmx2fastrom.ips
 ;    extra_options_for_mmx2fastrom.ips
 ;    option_mode_exit_to_menu_for_mmx2fastrom.ips
